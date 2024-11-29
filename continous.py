@@ -1,7 +1,7 @@
 import pandas as pd
 import random
 
-df = pd.read_csv("strigamia-acuminata_profiles.tsv.short", sep="\t", index_col = 0)
+df = pd.read_csv("strigamia-acuminata_profiles.tsv.short", sep="\t", index_col=0)
 
 for i in range(0, len(df)):
     for j in range(0, len(df.columns)):
