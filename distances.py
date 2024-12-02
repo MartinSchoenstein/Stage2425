@@ -3,10 +3,16 @@ from sklearn.metrics import jaccard_score
 from scipy.spatial import distance
 from scipy import stats
 from sklearn.metrics import mutual_info_score
+from sklearn import preprocessing
+from newick import read
+from Bio import Phylo
 
 
 def distance_profiles(x, y, method):
-    dfx, dfy = input(x, y)
+    if isinstance(x, str):
+        dfx, dfy = input(x, y)
+    else:
+        dfx, dfy = x, y
     if method == "Jaccard":
         return jaccard(dfx, dfy)
     if method == "Hamming":
@@ -20,13 +26,8 @@ def distance_profiles(x, y, method):
 def input(x, y):
     dfx = pd.read_csv(x, sep="\t", index_col=0)
     dfy = pd.read_csv(y, sep="\t", index_col=0)
-    for x in dfx.icol[0]:
-        if x not in [0, 1]:
-            global binary
-            binary = False
-            break
-        else:
-            binary = True
+    global binary
+    binary = is_binary(dfx)
     return (dfx, dfy)
 
 
@@ -81,18 +82,78 @@ def mi(dfx, dfy):
     return mi_distance
 
 
-def to_binary(df, treshold=60):
-    for i in range(0, len(df)):
-        for j in range(0, len(df.columns)):
-            if df.iloc[i][j] > treshold:
-                df.iloc[i][j] = 1
-            else:
-                df.iloc[i][j] = 0
-    return df
+def to_binary(path, treshold=60):
+    df = pd.read_csv(path, sep="\t", index_col=0)
+    global binary
+    binary = is_binary(df)
+    if binary is False:
+        for i in range(0, len(df)):
+            for j in range(0, len(df.columns)):
+                if df.iloc[i][j] > treshold:
+                    df.iloc[i][j] = 1
+                else:
+                    df.iloc[i][j] = 0
+        return df
+    else:
+        return "Already binary profiles"
 
 
-def normalize(df):
-    for i in range(0, len(df)):
-        for j in range(0, len(df.columns)):
-            df.iloc[i][j] = df.iloc[i][j] / max(df.iloc[i])
-    return df
+# def normalize(df):
+#   for i in range(0, len(df)):
+#      for j in range(0, len(df.columns)):
+#         df.iloc[i][j] = df.iloc[i][j] / max(df.iloc[i])
+# return df
+
+
+def normalize(path):
+    df = pd.read_csv(path, sep="\t", index_col=0)
+    global binary
+    binary = is_binary(df)
+    if binary is False:
+        for i in df.index:
+            df.loc[i] = preprocessing.normalize(df.loc[i])
+        return df
+    else:
+        return "Need continous profiles"
+
+
+def transition_vector(path):
+    pp = pd.read_csv(path, sep="\t", index_col=0)
+    global binary
+    binary = is_binary(pp)
+    if binary is True:
+        tv = [0]
+        for i in range(1, len(pp.columns)):
+            if pp.iloc[0][i] == pp.iloc[0][i - 1]:
+                tv.append(0)
+            if pp.iloc[0][i] > pp.iloc[0][i - 1]:
+                tv.append(1)
+            if pp.iloc[0][i] < pp.iloc[0][i - 1]:
+                tv.append(-1)
+        return tv
+    else:
+        return "Need binary profiles, you can use to_binary()"
+
+
+def is_binary(df):
+    for x in df.icol[0]:
+        if x not in [0, 1]:
+            global binary
+            binary = False
+            return binary
+        else:
+            binary = True
+            return binary
+
+
+def order_by_tree(x, tree):
+    if isinstance(x, str):
+        dfx = pd.read_csv(x, sep="\t", index_col=0)
+    else:
+        dfx = x
+    phylo = Phylo.read(tree, "newick")
+    leaf = phylo.get_terminals()
+    ordered_df = pd.DataFrame()
+    for l in leaf:
+        ordered_df[str(l)] = dfx[str(l)]
+    return ordered_df
