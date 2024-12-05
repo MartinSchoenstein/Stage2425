@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from sklearn.metrics import jaccard_score
 from scipy.spatial import distance
 from scipy import stats
@@ -8,7 +9,15 @@ from newick import read
 from Bio import Phylo
 
 
-def distance_profiles(x, y, method):
+def distance_profiles(
+    x,
+    y,
+    method,
+    successive_transitions=True,
+    confidence=1.5,
+    penalty=0.6,
+    truncation=0.6,
+):
     if isinstance(x, str):
         dfx, dfy = input(x, y)
     else:
@@ -21,6 +30,12 @@ def distance_profiles(x, y, method):
         return pearson(dfx, dfy)
     if method == "MI":
         return mi(dfx, dfy)
+    if method == "cotransition":
+        return cotransition(dfx, dfy, successive_transitions)
+    if method == "pcs":
+        return pcs(dfx, dfy, confidence, penalty)
+    if method == "svd_phy":
+        return SVD_phy(dfx, truncation)
 
 
 def input(x, y):
@@ -82,6 +97,117 @@ def mi(dfx, dfy):
     return mi_distance
 
 
+def cotransition(tvx, tvy, successive_transitions=True):
+    print("Take care to use transition vectors and not classic profiles")
+    if binary == False:
+        return "Binary profiles only ; use to_Binary() fonction"
+    cotransition_scores = pd.DataFrame(index=tvx.index, columns=tvy.index)
+    for i in tvx.index:
+        for j in tvy.index:
+            t1 = 0
+            t2 = 0
+            c = 0
+            d = 0
+            k = 0
+            last_transition_x = ""
+            last_transition_y = ""
+            for x in range(0, len(tvx.columns)):
+                if successive_transitions == True or last_transition_x != x - 1:
+                    if tvx.loc[i][x] != 0:
+                        t1 = t1 + 1
+                if successive_transitions == True or last_transition_y != x - 1:
+                    if tvy.loc[j][x] != 0:
+                        t2 = t2 + 1
+                if (
+                    last_transition_x != x - 1 and last_transition_y != x - 1
+                ) or successive_transitions == True:
+                    if tvx.loc[i][x] != 0 and tvy.loc[j][x] != 0:
+                        if tvx.loc[i][x] == tvy.loc[j][x]:
+                            c = c + 1
+                        else:
+                            d = d + 1
+            k = c - d
+            cotransition_scores.loc[i, j] = k / (t1 + t2 - abs(k))
+    print("Cotransition score :")
+    return cotransition_scores
+
+
+def pcs(tvx, tvy, confidence=1.5, penalty=0.6):
+    print("Take care to use transition vectors and not classic profiles")
+    if binary == False:
+        return "Binary profiles only ; use to_Binary() fonction"
+    pcs_scores = pd.DataFrame(index=tvx.index, columns=tvy.index)
+    for i in tvx.index:
+        for j in tvy.index:
+            match_1 = 0
+            mismatch_1 = 0
+            match_2 = 0
+            mismatch_2 = 0
+            for x in range(1, len(tvx.columns)):
+                if tvx.loc[i][x] != 0 or tvy.loc[j][x] != 0:
+                    if tvx.loc[i][x] == tvy.loc[j][x]:
+                        if len(tvx.columns) - 1 - x > 0:
+                            if (
+                                tvx.loc[i][x - 1]
+                                == tvx.loc[i][x + 1]
+                                == tvy.loc[j][x - 1]
+                                == tvy.loc[j][x + 1]
+                                == 0
+                            ):
+                                match_2 = match_2 + 1
+                            else:
+                                match_1 = match_1 + 1
+                        else:
+                            match_1 = match_1 + 1
+                    elif len(tvx.columns) - 1 - x > 0:
+                        if (
+                            tvx.loc[i][x] != 0
+                            and tvx.loc[i][x - 1] == tvx.loc[i][x + 1] == 0
+                        ) or (
+                            tvy.loc[j][x] != 0
+                            and tvy.loc[j][x - 1] == tvy.loc[j][x + 1] == 0
+                        ):
+                            mismatch_2 = mismatch_2 + 1
+                        else:
+                            mismatch_1 = mismatch_1 + 1
+                    else:
+                        mismatch_1 = mismatch_1 + 1
+            pcs_scores.loc[i, j] = (
+                (match_1)
+                + (match_2 * confidence)
+                - penalty * (mismatch_1 + mismatch_2 * confidence)
+            )
+    print("PCS :")
+    return pcs_scores
+
+
+def svd_phy(a, p):
+    u, s, v = np.linalg.svd(a, False)  # SVD de la matrice A
+    k = int(p * len(u))  # nb de colonnes à garder dans U
+    u_truncated = u[:, :k]  # ajout des colonnes U
+
+    # normalisation
+    for i in range(0, len(u_truncated)):
+        for j in range(0, k):
+            u_truncated[i][j] = u_truncated[i][j] / np.max(u_truncated[i])
+
+    # Calculate the distance euclidienne
+    svdphy_distance = np.zeros((len(u_truncated), len(u_truncated)))
+    for i in range(0, len(u_truncated)):
+        for j in range(0, len(u_truncated)):
+            svdphy_distance[i][j] = np.sqrt(
+                np.sum((u_truncated[i] - u_truncated[j]) ** 2)
+            )
+
+    row_labels = a.index
+    col_labels = a.index
+    svdphy_distance = pd.DataFrame(
+        svdphy_distance, index=row_labels, columns=col_labels
+    )
+
+    return svdphy_distance
+
+
 def to_binary(path, treshold=60):
     df = pd.read_csv(path, sep="\t", index_col=0)
     global binary
@@ -122,21 +248,23 @@ def transition_vector(path):
     global binary
     binary = is_binary(pp)
     if binary is True:
-        tv = [0]
-        for i in range(1, len(pp.columns)):
-            if pp.iloc[0][i] == pp.iloc[0][i - 1]:
-                tv.append(0)
-            if pp.iloc[0][i] > pp.iloc[0][i - 1]:
-                tv.append(1)
-            if pp.iloc[0][i] < pp.iloc[0][i - 1]:
-                tv.append(-1)
+        tv = pd.DataFrame(index=pp.index, columns=pp.columns)
+        for j in range(0, len(pp)):
+            tv.iloc[j][0] = 0
+            for i in range(1, len(pp.columns)):
+                if pp.iloc[j][i] == pp.iloc[j][i - 1]:
+                    tv.iloc[j][i] = 0
+                if pp.iloc[j][i] > pp.iloc[j][i - 1]:
+                    tv.iloc[j][i] = 1
+                if pp.iloc[j][i] < pp.iloc[j][i - 1]:
+                    tv.iloc[j][i] = -1
         return tv
     else:
         return "Need binary profiles, you can use to_binary()"
 
 
 def is_binary(df):
-    for x in df.icol[0]:
+    for x in df.iloc[0]:
         if x not in [0, 1]:
             global binary
             binary = False
