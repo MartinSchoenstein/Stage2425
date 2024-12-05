@@ -1,7 +1,8 @@
 import pandas as pd
+import numpy as np
 from sklearn.metrics import jaccard_score
 from scipy.spatial import distance
-from scipy import stats
+from scipy import linalg, stats
 from sklearn.metrics import mutual_info_score
 from sklearn import preprocessing
 from newick import read
@@ -23,6 +24,8 @@ def distance_profiles(x, y, method, parameter = False):
         return mi(dfx, dfy)
     if method == "cotransition":
         return cotransition(dfx, dfy, parameter)
+    if method == "SVDphy":
+        return SVD_phy(A, p)
 
 
 def input(x, y):
@@ -115,6 +118,30 @@ def cotransition(tvx, tvy, parameter = False):
             cotransition_scores.loc[i, j] = k / (t1 + t2 - abs(k))
     print("Cotransition score :")
     return cotransition_scores
+
+
+def SVD_phy(a, p):
+
+    U, S, V = np.linalg.svd(,False) #SVD de la matrice A
+    k = int(p * len(U)) #nb de colonnes à garder dans U
+    U_truncated = U[:, :k] #ajout des colonnes U
+
+    # normalisation
+    for i in range(0, len(U_truncated)):
+        for j in range(0, k):
+            U_truncated[i][j] = U_truncated[i][j] / np.max(U_truncated[i])
+
+    # Calculate the distance euclidienne
+    SVDphy_distance = np.zeros((len(U_truncated), len(U_truncated)))
+    for i in range(0, len(U_truncated)):
+        for j in range(0, len(U_truncated)):
+            SVDphy_distance[i][j] = np.sqrt(np.sum((U_truncated[i] - U_truncated[j])**2))
+    
+    row_labels = a.index
+    col_labels = a.index
+    SVDphy_distance = pd.DataFrame(SVDphy_distance, index=row_labels, columns=col_labels)
+
+    return SVDphy_distance
 
 
 def to_binary(path, treshold=60):
