@@ -1,36 +1,40 @@
 import pandas as pd
-from scipy import stats
+from sklearn.metrics import jaccard_score
 from scipy.spatial import distance
-from sklearn.metrics import jaccard_score, mutual_info_score
+from scipy import stats
+from sklearn.metrics import mutual_info_score
+from sklearn import preprocessing
+from newick import read
+from Bio import Phylo
 
 
-def distance_profiles(x, y, method):
-    dfx, dfy = input(x, y)
+def distance_profiles(x, y, method, parameter = False):
+    if isinstance(x, str):
+        dfx, dfy = input(x, y)
+    else:
+        dfx, dfy = x, y
     if method == "Jaccard":
-        return Jaccard(dfx, dfy)
+        return jaccard(dfx, dfy)
     if method == "Hamming":
-        return Hamming(dfx, dfy)
+        return hamming(dfx, dfy)
     if method == "Pearson":
         return pearson(dfx, dfy)
     if method == "MI":
-        return calc_mi(dfx, dfy)
+        return mi(dfx, dfy)
+    if method == "cotransition":
+        return cotransition(dfx, dfy, parameter)
 
 
 def input(x, y):
     dfx = pd.read_csv(x, sep="\t", index_col=0)
     dfy = pd.read_csv(y, sep="\t", index_col=0)
-    for x in dfx.icol[0]:
-        if x not in [0, 1]:
-            global binary
-            binary = False
-            break
-        else:
-            binary = True
+    global binary
+    binary = is_binary(dfx)
     return (dfx, dfy)
 
 
-def Jaccard(dfx, dfy):  # noqa: N802
-    if binary is False:
+def jaccard(dfx, dfy):
+    if binary == False:
         return "Binary profiles only ; use to_Binary() fonction"
     else:
         jaccard_distance = pd.DataFrame(index=list(dfx.index), columns=list(dfy.index))
@@ -41,8 +45,8 @@ def Jaccard(dfx, dfy):  # noqa: N802
     return jaccard_distance
 
 
-def Hamming(dfx, dfy):  # noqa: N802
-    if binary is False:
+def hamming(dfx, dfy):
+    if binary == False:
         return "Binary profiles only ; use to_Binary() fonction"
     else:
         hamming_distance = pd.DataFrame(index=dfx.index, columns=dfy.index)
@@ -54,7 +58,7 @@ def Hamming(dfx, dfy):  # noqa: N802
 
 
 def pearson(dfx, dfy):
-    if binary is False:
+    if binary == False:
         print(
             "You use continuous profiles, think about normalize your datas with normalize() function"
         )
@@ -67,8 +71,8 @@ def pearson(dfx, dfy):
     return pearson_results
 
 
-def calc_mi(dfx, dfy):
-    if binary is False:
+def mi(dfx, dfy):
+    if binary == False:
         print(
             "You use continuous profiles, think about normalize your datas with normalize() function"
         )
@@ -80,18 +84,114 @@ def calc_mi(dfx, dfy):
     return mi_distance
 
 
-def to_binary(df, treshold=60):
-    for i in range(0, len(df)):
-        for j in range(0, len(df.columns)):
-            if df.iloc[i][j] > treshold:
-                df.iloc[i][j] = 1
-            else:
-                df.iloc[i][j] = 0
-    return df
+def cotransition(tvx, tvy, parameter = False):
+    print("Take care to use transition vectors and not classic profiles")
+    if binary == False:
+        return "Binary profiles only ; use to_Binary() fonction"
+    cotransition_scores = pd.DataFrame(index=tvx.index, columns=tvy.index)
+    for i in tvx.index:
+        for j in tvy.index:
+            t1 = 0
+            t2 = 0
+            c = 0
+            d = 0
+            k = 0
+            last_transition_x = ""
+            last_transition_y = ""
+            for x in range(0, len(tvx.columns)):
+                if parameter == False or last_transition_x != x -1:
+                    if tvx.loc[i][x] != 0:
+                        t1 = t1 + 1
+                if parameter == False or last_transition_y != x -1:
+                    if tvy.loc[j][x] !=0:
+                        t2 = t2 + 1
+                if (last_transition_x != x - 1 and last_transition_y != x -1) or parameter == False:
+                    if tvx.loc[i][x] != 0 and tvy.loc[j][x] != 0:
+                        if tvx.loc[i][x] == tvy.loc[j][x]:
+                            c = c + 1
+                        else:
+                            d = d + 1
+            k = c -d
+            cotransition_scores.loc[i, j] = k / (t1 + t2 - abs(k))
+    print("Cotransition score :")
+    return cotransition_scores
 
 
-def normalize(df):
-    for i in range(0, len(df)):
-        for j in range(0, len(df.columns)):
-            df.iloc[i][j] = df.iloc[i][j] / max(df.iloc[i])
-    return df
+def to_binary(path, treshold=60):
+    df = pd.read_csv(path, sep="\t", index_col=0)
+    global binary
+    binary = is_binary(df)
+    if binary is False:
+        for i in range(0, len(df)):
+            for j in range(0, len(df.columns)):
+                if df.iloc[i][j] > treshold:
+                    df.iloc[i][j] = 1
+                else:
+                    df.iloc[i][j] = 0
+        return df
+    else:
+        return "Already binary profiles"
+
+
+# def normalize(df):
+#   for i in range(0, len(df)):
+#      for j in range(0, len(df.columns)):
+#         df.iloc[i][j] = df.iloc[i][j] / max(df.iloc[i])
+# return df
+
+
+def normalize(path):
+    df = pd.read_csv(path, sep="\t", index_col=0)
+    global binary
+    binary = is_binary(df)
+    if binary is False:
+        for i in df.index:
+            df.loc[i] = preprocessing.normalize(df.loc[i])
+        return df
+    else:
+        return "Need continous profiles"
+
+
+def transition_vector(path):
+    pp = pd.read_csv(path, sep="\t", index_col=0)
+    global binary
+    binary = is_binary(pp)
+    if binary is True:
+        tv = pd.DataFrame(index=pp.index, columns=pp.columns)
+        for j in range(0, len(pp)):
+            tv.iloc[j][0] = 0
+            for i in range(1, len(pp.columns)):
+                if pp.iloc[j][i] == pp.iloc[j][i - 1]:
+                    tv.iloc[j][i] = 0
+                if pp.iloc[j][i] > pp.iloc[j][i - 1]:
+                    tv.iloc[j][i] = 1
+                if pp.iloc[j][i] < pp.iloc[j][i - 1]:
+                    tv.iloc[j][i] = -1
+        return tv
+    else:
+        return "Need binary profiles, you can use to_binary()"
+
+
+def is_binary(df):
+    for x in df.iloc[0]:
+        if x not in [0, 1]:
+            global binary
+            binary = False
+            return binary
+        else:
+            binary = True
+            return binary
+
+
+def order_by_tree(x, tree):
+    if isinstance(x, str):
+        dfx = pd.read_csv(x, sep="\t", index_col=0)
+    else:
+        dfx = x
+    phylo = Phylo.read(tree, "newick")
+    leaf = phylo.get_terminals()
+    ordered_df = pd.DataFrame()
+    for l in leaf:
+        ordered_df[str(l)] = dfx[str(l)]
+    return ordered_df
+
