@@ -9,6 +9,7 @@ from Bio import Phylo
 from sqlite3 import Binary
 from scipy import stats
 from scipy.stats import fisher_exact
+import time
 
 
 def distance_profiles(
@@ -45,7 +46,7 @@ def distance_profiles(
 
 
 def input(x):
-    dfx = pd.read_csv(x, sep="\t", index_col=0)
+    dfx = pd.read_csv(x, sep=",", index_col=0)
     global binary
     binary = is_binary(dfx)
     return dfx
@@ -55,34 +56,46 @@ def jaccard(dfx, dfy):
     if binary == False:
         return "Binary profiles only ; use to_Binary() fonction"
     else:
+        symetry = False
         if dfy is None:
             dfy = dfx
-        jaccard_distance = pd.DataFrame(
-        index=list(dfx.index), columns=list(dfy.index)
-                )
-        for i in dfx.index:
-            for j in dfy.index:
-                jaccard_distance.loc[i, j] = 1 - jaccard_score(
-                    dfx.loc[i], dfy.loc[j]
-                )
-    print("Jaccard Distance :")
+            symetry=True
+        jaccard_distance = np.zeros((len(dfx.index), len(dfy.index)))
+        for a,i in enumerate(dfx.index): # Éviter les doublons si symétrique
+            query = dfx.loc[i]
+            for b,j in enumerate(dfy.index):
+                if symetry and b<a:
+                    continue
+                #score_temp = 1 - jaccard_score(query, dfy.loc[j])
+                score_temp = distance.jaccard(query, dfy.loc[j])
+                jaccard_distance[a, b] = score_temp
+                if symetry:
+                    jaccard_distance[b, a] = score_temp
+    jaccard_distance = pd.DataFrame(jaccard_distance, index=dfx.index, columns=dfy.index)
+    jaccard_distance.to_csv('jaccard_distance.csv', index=True)
     return jaccard_distance
 
 
 def hamming(dfx, dfy):
-    if binary == False:
+    if True == False:
         return "Binary profiles only ; use to_Binary() fonction"
     else:
+        symetry = False
         if dfy is None:
             dfy = dfx
-        
-        hamming_distance = pd.DataFrame(index=dfx.index, columns=dfy.index)
-        for i in dfx.index:
-            for j in dfy.index:
-                hamming_distance.loc[i, j] = distance.hamming(
-                    dfx.loc[i], dfy.loc[j]
-                )
-    print("Hamming Distance :")
+            symetry=True
+        hamming_distance = np.zeros((len(dfx.index), len(dfy.index)))
+        for a,i in enumerate(dfx.index): # Éviter les doublons si symétrique
+            query = dfx.loc[i]
+            for b,j in enumerate(dfy.index):
+                if symetry and b<a:
+                    continue
+                score_temp = distance.hamming(query, dfy.loc[j])
+                hamming_distance[a,b] = score_temp
+                if symetry: 
+                    hamming_distance[b,a] = score_temp
+    hamming_distance = pd.DataFrame(hamming_distance, index=dfx.index, columns=dfy.index)
+    hamming_distance.to_csv('hamming_distance.csv', index=True)
     return hamming_distance
 
 
@@ -91,17 +104,28 @@ def pearson(dfx, dfy):
         print(
             "You use continuous profiles, think about normalize your datas with normalize() function"
         )
+    symetry = False
     if dfy is None:
         dfy = dfx
-    pearson_results = pd.DataFrame(index=dfx.index, columns=dfy.index)
-    for i in dfx.index:
-        for j in dfy.index:
-            pearson_correlation = stats.pearsonr(dfx.loc[i], dfy.loc[j])
-            pearson_results.loc[i, j] = [
-                pearson_correlation[0],
-                pearson_correlation[1],
-            ]
-    print("Pearson Correlation and associated p-values :")
+        symetry=True
+    pearson_results = np.zeros((len(dfx.index), len(dfy.index)))
+    for a,i in enumerate(dfx.index): # Éviter les doublons si symétrique
+        query = dfx.loc[i]
+        for b,j in enumerate(dfy.index):
+            if symetry and b<a:
+                continue
+            pearson_correlation = stats.pearsonr(query, dfy.loc[j])
+            if not np.isnan(pearson_correlation[0]):
+                score_temp = 1 - pearson_correlation[0]
+                pearson_results[a, b] = score_temp
+                if symetry:
+                    pearson_results.loc[b, a] = score_temp
+            else:
+                pearson_results[a, b] = np.nan
+                if symetry:
+                    pearson_results.loc[b, a] = np.nan
+    pearson_results = pd.DataFrame(pearson_results, index=dfx.index, columns=dfy.index)
+    pearson_results.to_csv('pearson_correlation.csv', index=True)
     return pearson_results
 
 
@@ -110,29 +134,42 @@ def mi(dfx, dfy):
         print(
             "You use continuous profiles, think about normalize your datas with normalize() function"
         )
+    symetry = False
     if dfy is None:
         dfy = dfx
-    mi_distance = pd.DataFrame(index=dfx.index, columns=dfy.index)
-    for i in dfx.index:
-        for j in dfy.index:
-            mi_distance.loc[i, j] = mutual_info_score(dfx.loc[i], dfy.loc[j])
-    print("Mutual Information :")
+        symetry=True
+    mi_distance = np.zeros((len(dfx.index), len(dfy.index)))
+    for a,i in enumerate(dfx.index):
+        #query = dfx.loc[i]
+        for b,j in enumerate(dfy.index):
+            if symetry and b<a:
+                continue
+            score_temp = 1 - mutual_info_score(dfx.loc[i], dfy.loc[j])
+            mi_distance[a, b] = score_temp
+            if symetry:
+                mi_distance[b, a] = score_temp
+    mi_distance = pd.DataFrame(mi_distance, index=dfx.index, columns=dfy.index)
+    mi_distance.to_csv('mi_distance.csv', index=True)
     return mi_distance
 
 
 def cotransition(dfx, dfy, successive_transitions=True):
-    if binary == False:
-        return "Binary profiles only ; use to_Binary() fonction"
+    #if binary == False:
+    #    return "Binary profiles only ; use to_Binary() fonction"
     tvx = transition_vector(dfx)
+    print(len(tvx))
     symetry = False
     if dfy is None:
         tvy = tvx
+        dfy = dfx
         symetry=True
     else:
         tvy = transition_vector(dfy)
-    cotransition_scores = pd.DataFrame(index=tvx.index, columns=tvy.index)
-    p_values = pd.DataFrame(index=tvx.index, columns=tvy.index)
+    cotransition_scores = np.zeros((len(dfx.index), len(dfy.index)))
+    p_values = np.zeros((len(dfx.index), len(dfy.index)))
+    print(len(p_values))
     for a,i in enumerate(tvx.index):
+        #start_row = time.time()
         for b,j in enumerate(tvy.index):
             if symetry and b<a:
                 continue
@@ -143,38 +180,54 @@ def cotransition(dfx, dfy, successive_transitions=True):
             k = 0
             last_transition_x = ""
             last_transition_y = ""
-            for x in range(0, len(tvx.columns)):
-                if successive_transitions == True or last_transition_x != x - 1:
-                    if tvx.loc[i][x] != 0:
-                            t1 = t1 + 1
-                if successive_transitions == True or last_transition_y != x - 1:
-                    if tvy.loc[j][x] != 0:
-                            t2 = t2 + 1
-                if (
-                    last_transition_x != x - 1 and last_transition_y != x - 1
-                ) or successive_transitions == True:
-                    if tvx.loc[i][x] != 0 and tvy.loc[j][x] != 0:
-                        if tvx.loc[i][x] == tvy.loc[j][x]:
-                            c = c + 1
-                        else:
-                            d = d + 1
+            v1 = tvx.loc[i]
+            v2 = tvy.loc[j]
+            t1 = np.count_nonzero(v1)
+            t2 = np.count_nonzero(v2)
+            nonz = (v1 != 0) & (v2 != 0)
+            c = np.sum(v1[nonz]==v2[nonz])
+            d = np.count_nonzero(v1[nonz]-v2[nonz])
+            #for x in range(0, len(tvx.columns)):
+                #if successive_transitions == True or last_transition_x != x - 1:
+                #    if tvx.loc[i][x] != 0:
+                #            t1 = t1 + 1
+                #if successive_transitions == True or last_transition_y != x - 1:
+                #    if tvy.loc[j][x] != 0:
+                #            t2 = t2 + 1
+                #if (
+                #    last_transition_x != x - 1 and last_transition_y != x - 1
+                #) or successive_transitions == True:
+                #    if tvx.loc[i][x] != 0 and tvy.loc[j][x] != 0:
+                #        if tvx.loc[i][x] == tvy.loc[j][x]:
+                #            c = c + 1
+                #        else:
+                #            d = d + 1
             k = c - d
-            print(i, j, x, t1, t2, c, d, k)
+            #print(i, j, len(tvx.columns), t1, t2, c, d, k)
             if t1 == 0 and t2 == 0:
-                cotransition_scores.loc[i, j] = None
-                cotransition_scores.loc[j, i] = None
-
+                cotransition_scores[a, b] = None
+                if symetry:
+                    cotransition_scores[b, a] = None
             else:
-                cotransition_scores.loc[i, j] = k / (t1 + t2 - abs(k))
-                cotransition_scores.loc[j, i] = k / (t1 + t2 - abs(k))
+                score_temp = k / (t1 + t2 - abs(k))
+                cotransition_scores[a, b] = score_temp
+                if symetry:
+                    cotransition_scores[b, a] = score_temp
+            #print(time.time() - start_row)
 
                 #tableau de contingence:
-            contingency_table = [[abs(k),t1-abs(k)], [t2-abs(k),(x+1)-t1-t2+abs(k)]]
+            contingency_table = [[abs(k),t1-abs(k)], [t2-abs(k),(len(tvx.columns))-t1-t2+abs(k)]]
             score = fisher_exact(contingency_table, alternative="greater")
-            p_values.loc[i, j] = score.pvalue
-            p_values.loc[j, i] = score.pvalue
+            p_values[a, b] = score.pvalue
+            if symetry:
+                p_values[b, a] = score.pvalue
     print("Cotransition score :")
+    cotransition_scores = pd.DataFrame(cotransition_scores, index=dfx.index, columns=dfy.index)
+    p_values = pd.DataFrame(p_values, index=dfx.index, columns=dfy.index)
+    cotransition_scores.to_csv('cotransition_scores.csv', index=True)
+    p_values.to_csv('p_values.csv', index=True)
     return cotransition_scores, p_values
+
 
 
 def pcs(dfx, dfy, confidence=1.5, penalty=0.6):
@@ -182,13 +235,17 @@ def pcs(dfx, dfy, confidence=1.5, penalty=0.6):
     if binary == False:
         return "Binary profiles only ; use to_Binary() fonction"
     tvx = transition_vector(dfx)
+    symetry = False
     if dfy is None:
         tvy = tvx
+        symetry=True
     else:
         tvy = transition_vector(dfy)
-    pcs_scores = pd.DataFrame(index=tvx.index, columns=tvy.index)
-    for i in tvx.index:
-        for j in tvy.index:
+    pcs_scores = np.zeros((len(dfx.index), len(dfy.index)))
+    for a,i in enumerate(tvx.index):
+        for b,j in enumerate(tvy.index):
+            if symetry and b<a:
+                continue
             match_1 = 0
             mismatch_1 = 0
             match_2 = 0
@@ -222,12 +279,14 @@ def pcs(dfx, dfy, confidence=1.5, penalty=0.6):
                             mismatch_1 = mismatch_1 + 1
                     else:
                         mismatch_1 = mismatch_1 + 1
-            pcs_scores.loc[i, j] = (
-                (match_1)
-                + (match_2 * confidence)
-                - penalty * (mismatch_1 + mismatch_2 * confidence)
+            score_temp = (
+                (match_1) + (match_2 * confidence) - penalty * (mismatch_1 + mismatch_2 * confidence)
             )
-    print("PCS :")
+            pcs_scores[a, b] = score_temp
+            if symetry:
+                pcs_scores[b, a] = score_temp
+    pcs_scores = pd.DataFrame(pcs_scores, index=dfx.index, columns=dfy.index)
+    pcs_scores.to_csv('pcs_scores.csv', index=True)
     return pcs_scores
 
 
@@ -238,8 +297,7 @@ def svd_phy(dfx, p=0.5):
 
     # normalisation
     for i in range(0, len(u_truncated)):
-        for j in range(0, k):
-            u_truncated[i][j] = u_truncated[i][j] / np.max(u_truncated[i])
+        u_truncated[i] = u_truncated[i] / np.max(u_truncated[i])
 
     # Calculate the distance euclidienne
     svdphy_distance = np.zeros((len(u_truncated), len(u_truncated)))
@@ -251,25 +309,22 @@ def svd_phy(dfx, p=0.5):
 
     row_labels = dfx.index
     col_labels = dfx.index
-    svdphy_distance = pd.DataFrame(
-        svdphy_distance, index=row_labels, columns=col_labels
-    )
-
+    svdphy_distance = pd.DataFrame(svdphy_distance, index=row_labels, columns=col_labels)
+    svdphy_distance.to_csv('svdphy_distance.csv', index=True)
     return svdphy_distance
 
 
-def to_binary(path, treshold=60):
-    df = pd.read_csv(path, sep="\t", index_col=0)
+def to_binary(dfx, treshold=60):
     global binary
-    binary = is_binary(df)
+    binary = is_binary(dfx)
     if binary is False:
-        for i in range(0, len(df)):
-            for j in range(0, len(df.columns)):
-                if df.iloc[i][j] > treshold:
-                    df.iloc[i][j] = 1
+        for i in range(0, len(dfx)):
+            for j in range(0, len(dfx.columns)):
+                if dfx.iloc[i][j] > treshold:
+                    dfx.iloc[i][j] = 1
                 else:
-                    df.iloc[i][j] = 0
-        return df
+                    dfx.iloc[i][j] = 0
+        return dfx
     else:
         return print("Already binary profiles")
 
@@ -289,20 +344,30 @@ def transition_vector(dfx):
     global binary
     binary = is_binary(dfx)
     if binary is True:
-        tv = pd.DataFrame(index=dfx.index, columns=dfx.columns)
+        tv = np.zeros((len(dfx.index),(len(dfx.columns))))
+        start = time.time()
         for j in range(0, len(dfx)):
-            tv.iloc[j][0] = 0
-            for i in range(1, len(dfx.columns)):
-                if dfx.iloc[j][i] == dfx.iloc[j][i - 1]:
-                    tv.iloc[j][i] = 0
-                if dfx.iloc[j][i] > dfx.iloc[j][i - 1]:
-                    tv.iloc[j][i] = 1
-                if dfx.iloc[j][i] < dfx.iloc[j][i - 1]:
-                    tv.iloc[j][i] = -1
+            vec = dfx.iloc[j]
+            pos_ori = np.asarray(vec[:-1])
+            pos_new = np.asarray(vec[1:])
+            trans_vec = pos_new-pos_ori
+            tv[j] = np.pad(trans_vec, (1,0))
+            #tv[j][0] = 0
+            #for i in range(1, len(dfx.columns)):
+            #    curr = dfx.iloc[j][i]
+            #    prev = dfx.iloc[j][i-1]
+            #    if curr == prev:
+            #        tv[j][i] = 0
+            #    elif curr > prev:
+            #        tv[j][i] = 1
+            #    elif curr < prev:
+            #        tv[j][i] = -1
+            if j%100==0:
+                print(time.time()-start)
+        tv = pd.DataFrame(tv, index=dfx.index, columns=dfx.columns)
         return tv
     else:
         return "Need binary profiles, you can use to_binary()"
-
 
 def is_binary(df):
     for x in df.iloc[0]:
@@ -317,10 +382,12 @@ def is_binary(df):
 
 def order_by_tree(dfx, tree):
     phylo = Phylo.read(tree, "newick")
+    print(tree)
     leaf = phylo.get_terminals()
+    print(leaf)
     ordered_df = pd.DataFrame()
     for l in leaf:
-        ordered_df[str(l)] = dfx[str(l)]
+        ordered_df[str(l.name)] = dfx[str(l.name)]
     return ordered_df
 
 if __name__ == "__main__":
