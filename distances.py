@@ -16,6 +16,7 @@ def distance_profiles(
     method,
     x,
     y=None,
+    subset_prot=None,
     successive_transitions=True,
     confidence=1.5,
     penalty=0.6,
@@ -42,7 +43,7 @@ def distance_profiles(
     if method == "pcs" or method == "PCS":
         return pcs(dfx, dfy, confidence, penalty)
     if method == "svd_phy" or method == "SVD_phy":
-        return svd_phy(dfx, truncation)
+        return SVD_phy(dfx, truncation, subset_prot)
 
 
 def input(x):
@@ -243,6 +244,7 @@ def pcs(dfx, dfy, confidence=1.5, penalty=0.6):
         tvy = transition_vector(dfy)
     pcs_scores = np.zeros((len(dfx.index), len(dfy.index)))
     for a,i in enumerate(tvx.index):
+        start = time.time()
         for b,j in enumerate(tvy.index):
             if symetry and b<a:
                 continue
@@ -285,33 +287,55 @@ def pcs(dfx, dfy, confidence=1.5, penalty=0.6):
             pcs_scores[a, b] = score_temp
             if symetry:
                 pcs_scores[b, a] = score_temp
+            if j%100==0:
+                print(time.time()-start)
     pcs_scores = pd.DataFrame(pcs_scores, index=dfx.index, columns=dfy.index)
     pcs_scores.to_csv('pcs_scores.csv', index=True)
     return pcs_scores
 
 
-def svd_phy(dfx, p=0.5):
-    u, s, v = np.linalg.svd(dfx, False)  # SVD de la matrice A
-    k = int(p * len(u))  # nb de colonnes à garder dans U
-    u_truncated = u[:, :k]  # ajout des colonnes U
+def SVD_phy(A,  p, subset_prot=None): 
+    start = time.time()
+    U, S, V = np.linalg.svd(A,False) #SVD de la matrice A
+    k = int(p * len(U)) #nb de colonnes à garder dans U
+    U_truncated = U[:, :k] #ajout des colonnes U
+    
+    print(time.time()-start)
+    print(U.shape)
+    print(U_truncated.shape)
+
 
     # normalisation
-    for i in range(0, len(u_truncated)):
-        u_truncated[i] = u_truncated[i] / np.max(u_truncated[i])
-
+    #for i in range(0, len(U_truncated)):
+        #for j in range(0, k):
+        #U_truncated[i][j] = U_truncated[i][j] / np.max(U_truncated[i])
     # Calculate the distance euclidienne
-    svdphy_distance = np.zeros((len(u_truncated), len(u_truncated)))
-    for i in range(0, len(u_truncated)):
-        for j in range(0, len(u_truncated)):
-            svdphy_distance[i][j] = np.sqrt(
-                np.sum((u_truncated[i] - u_truncated[j]) ** 2)
-            )
+    if subset_prot!=None:
+        index_U = A.index
+        U = pd.DataFrame(U_truncated, index=index_U)
+        subset_U = U.loc[subset_prot]
+        row_labels  = subset_U.index
+        subset_U = subset_U.to_numpy()
+        print(subset_U.shape)
+    else:
+        subset_U = U_truncated
+        row_labels = A.index
+    col_labels = A.index
+    
+    SVDphy_distance = np.zeros((len(subset_U), len(U_truncated)))
 
-    row_labels = dfx.index
-    col_labels = dfx.index
-    svdphy_distance = pd.DataFrame(svdphy_distance, index=row_labels, columns=col_labels)
-    svdphy_distance.to_csv('svdphy_distance.csv', index=True)
-    return svdphy_distance
+    for i in range(0, len(subset_U)):
+        start = time.time()
+        for j in range(0, len(U_truncated)):
+            SVDphy_distance[i][j] = np.sqrt(np.sum((subset_U[i] - U_truncated[j])**2))
+        if i%100==0:
+            print(time.time()-start)
+
+    SVDphy_distance = pd.DataFrame(SVDphy_distance, index=row_labels, columns=col_labels)
+    SVDphy_distance.to_csv('SVDphy_distance.csv', index=True)
+    return SVDphy_distance
+
+   
 
 
 def to_binary(dfx, treshold=60):
