@@ -1,6 +1,6 @@
-from PhyloDist.distances import jaccard, hamming, mi, pearson
+from PhyloDist.distances import SVD_phy, cotransition, jaccard, hamming, mi, pcs, pearson
 from PhyloDist.output import to_csv
-from PhyloDist.pre_process import input, is_binary, binary
+import PhyloDist.pre_process as pre_process
 
 def distance_profiles(
     method,
@@ -11,30 +11,33 @@ def distance_profiles(
     confidence=1.5,
     penalty=0.6,
     truncation=None,
+    csv=False
 ):
-    if isinstance(x, str):
-        dfx = input(x)
-        print(binary)
+    
+    dfx = pre_process.input(x)
+    if y is None:
+        dfy = None
     else:
-        dfx = x
-        binary = True
-    if isinstance(y, str):
-        dfy = input(dfy)
-    else:
-        dfy = y
-        binary = True
+        dfy = pre_process.input(y)
+    p_value = None
     if method == "Jaccard" or method == "jaccard":
-        Jaccard, index, columns = jaccard(dfx, dfy)
-        return to_csv(Jaccard, index, columns)
+        result = jaccard(dfx, dfy)
     if method == "Hamming" or method == "hamming":
-        return hamming(dfx, dfy)
+        result = hamming(dfx, dfy) 
     if method == "Pearson" or method == "pearson":
-        return pearson(dfx, dfy)
+        result = pearson(dfx, dfy)
     if method == "MI" or method == "mi":
-        return mi(dfx, dfy)
+        result = mi(dfx, dfy)
     if method == "cotransition" or method == "Cotransition":
-        return cotransition(dfx, dfy, successive_transitions)
+        result, p_value = cotransition(dfx, dfy, successive_transitions)
     if method == "pcs" or method == "PCS":
-        return pcs(dfx, dfy, confidence, penalty)
+        result = pcs(dfx, dfy, confidence, penalty)
     if method == "svd_phy" or method == "SVD_phy":
-        return SVD_phy(dfx, truncation, subset_prot)
+        result = SVD_phy(dfx, truncation, subset_prot)
+    if csv is True:
+        if p_value != None:
+            return to_csv(result, name=f"{method}.csv"), to_csv(p_value, name=f"{method}_pvalue.csv")
+        else:
+            return to_csv(result, name=f"{method}.csv")
+    else:
+        return result
