@@ -33,4 +33,4 @@ dependencies = [
 
 
 [tool.ruff]
-lint.select = ["N"]
+lint.select = ["All"]
