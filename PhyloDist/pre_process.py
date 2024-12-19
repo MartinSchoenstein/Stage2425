@@ -4,30 +4,17 @@ from sklearn import preprocessing
 from Bio import Phylo
 
 
-global binary
-
-
 def input(x):
     dfx = pd.read_csv(x, sep=",", index_col=0)
-    binary = is_binary(dfx)
     return dfx
 
 
-
 def is_binary(df):
-    for x in df.iloc[0]:
-        if x not in [0, 1]:
-            global binary
-            binary = False
-            return binary
-        else:
-            binary = True
-            return binary
-
+    binary = df.map(lambda x: x in [0, 1]).all().all()
+    return binary
 
 
 def to_binary(dfx, treshold=60):
-    global binary
     binary = is_binary(dfx)
     if binary is False:
         for i in range(0, len(dfx)):
@@ -36,13 +23,9 @@ def to_binary(dfx, treshold=60):
                     dfx.iloc[i][j] = 1
                 else:
                     dfx.iloc[i][j] = 0
-        return dfx
-    else:
-        return print("Already binary profiles")
-
-
+    return dfx
+    
 def normalize(dfx):
-    global binary
     binary = is_binary(dfx)
     if binary is False:
         for i in dfx.index:
@@ -52,10 +35,8 @@ def normalize(dfx):
         return dfx
 
 
-def transition_vector(dfx):
-    global binary
-    binary = is_binary(dfx)
-    if binary is True:
+def transition_vector(dfx, binary):
+    if binary:
         tv = np.zeros((len(dfx.index),(len(dfx.columns))))
         for j in range(0, len(dfx)):
             vec = dfx.iloc[j]
@@ -75,6 +56,6 @@ def order_by_tree(dfx, tree):
     leaf = phylo.get_terminals()
     print(leaf)
     ordered_df = pd.DataFrame()
-    for l in leaf:
+    for l in leaf:  # noqa: E741
         ordered_df[str(l.name)] = dfx[str(l.name)]
     return ordered_df
