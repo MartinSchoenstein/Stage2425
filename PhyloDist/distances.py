@@ -125,7 +125,7 @@ def mi(dfx, dfy):
     return mi_distance
 
 
-def cotransition(dfx, dfy = None, successive_transitions=True):
+def cotransition(dfx, dfy = None):
     binary_x = is_binary(dfx)
     tvx = transition_vector(dfx, binary_x)
     symetry = False
@@ -256,14 +256,12 @@ def SVD_phy(dfx,  p, subset_prot=None):
         subset_U = U.loc[subset_prot]
         row_labels  = subset_U.index
         subset_U = subset_U.to_numpy()
-        print(subset_U.shape)
     else:
         subset_U = U_truncated
         row_labels = dfx.index
     col_labels = dfx.index
     
     SVDphy_distance = np.zeros((len(subset_U), len(U_truncated)))
-    print(SVDphy_distance.shape)
 
     for i in range(0, len(subset_U)):
         for j in range(0, len(U_truncated)):
