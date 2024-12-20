@@ -46,9 +46,7 @@ def transition_vector(dfx, binary):
             tv[j] = np.pad(trans_vec, (1,0))
         tv = pd.DataFrame(tv, index=dfx.index, columns=dfx.columns)
         return tv
-    else:
-        return "Need binary profiles, you can use to_binary()"
-
+    raise ValueError("Binary profil only") 
 
 def order_by_tree(dfx, tree):
     phylo = Phylo.read(tree, "newick")
